@@ -238,7 +238,8 @@ function retreat(u,en){if(u.rtr>0)return;const m=M,vis=en.filter(e=>Math.hypot(e
  if(!mates.length||mates.some(a=>Math.hypot(a.x-u.x,a.y-u.y)<9)||!(vis>=2||u.hp<40))return;
  mates.sort((x,y)=>Math.hypot(x.x-u.x,x.y-u.y)-Math.hypot(y.x-u.x,y.y-u.y));const t=mates[0];u.rtr=3.5;go(u,[t.x,t.y],1);lg(u.p.n.split(' ')[0]+' recua para junto da equipe')}
 
-function draw(){document.getElementById('org').textContent=fl(S.cc)+' '+S.org+' · Voltrix Tactical';
+function draw(){if(!SS){document.getElementById('nav').innerHTML='';document.getElementById('bar').innerHTML='';document.getElementById('org').textContent='Faça login para jogar';document.getElementById('m').innerHTML=loginV();return}
+ document.getElementById('org').textContent=fl(S.cc)+' '+S.org+' · Voltrix Tactical';
  document.getElementById('bar').innerHTML=`<div class="stat"><b>${fm(S.money)}</b><span>Saldo</span></div><div class="stat"><b>${S.rep}/100</b><span>Reputação</span></div><div class="stat"><b>${S.st.length}/5</b><span>Titulares</span></div>`;
  document.getElementById('nav').innerHTML=[['home','Início'],['mkt','Mercado'],['sq','Elenco'],['ag','Agentes'],['fin','Finanças'],['rank','Ranking']].map(([k,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';msg='';draw();scrollTo(0,0)${k=='rank'?';loadRank()':''}">${l}</button>`).join('');
  document.getElementById('m').innerHTML=view();drawThumbs()}
@@ -515,7 +516,7 @@ const SBU='https://yfpnnvaouovypfxzheri.supabase.co',SBK='sb_publishable_79C0fx4
 let SS=null,RK=null,onMsg='',lastSend='',lastT=0;
 try{SS=JSON.parse(localStorage.getItem('hv_sess'))}catch(e){}
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const eml=a=>a.toLowerCase()+'@honravoltrix.game';
+const DOMS=['honravoltrix.game','gmail.com'],eml=(a,i)=>(i?'hv.':'')+a.toLowerCase()+'@'+DOMS[i||0],emsg=r=>(r.j&&(r.j.msg||r.j.message||r.j.error_description))||'',badEm=r=>!!r.j&&(r.j.error_code=='email_address_invalid'||(/invalid/i.test(emsg(r))&&/email/i.test(emsg(r))));
 function setOn(m){onMsg=m;const e=document.getElementById('onm');if(e)e.textContent=m}
 async function sb(path,o,t){o=o||{};const h=Object.assign({apikey:SBK,'Content-Type':'application/json',Authorization:'Bearer '+(t||SBK)},o.headers||{});const r=await fetch(SBU+path,Object.assign({},o,{headers:h}));let j=null;try{j=await r.json()}catch(e){}return{ok:r.ok,s:r.status,j}}
 function setSess(j,ap){SS={t:j.access_token,r:j.refresh_token,exp:Date.now()+(j.expires_in||3600)*1000-60000,uid:j.user.id,ap};try{localStorage.setItem('hv_sess',JSON.stringify(SS))}catch(e){}}
@@ -523,12 +524,13 @@ function logout(){SS=null;try{localStorage.removeItem('hv_sess')}catch(e){}draw(
 async function tok(){if(!SS)return null;if(Date.now()>SS.exp){const r=await sb('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:SS.r})});if(!r.ok||!r.j.access_token){logout();return null}setSess(r.j,SS.ap)}return SS.t}
 async function authGo(reg){const ap=(document.getElementById('au').value||'').trim(),pw=document.getElementById('ap').value;
  if(!/^[A-Za-z0-9_]{3,16}$/.test(ap))return setOn('Apelido: 3 a 16 letras, números ou _');if(pw.length<6)return setOn('Senha: mínimo de 6 caracteres');
+ const tq=document.getElementById('aq');if(reg&&tq&&tq.value.trim()){S.org=tq.value.trim().slice(0,24);save()}
  setOn('Conectando...');
- try{const r=await sb(reg?'/auth/v1/signup':'/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:eml(ap),password:pw})});
-  if(!r.ok)return setOn(reg?(/regist|exist/i.test(JSON.stringify(r.j))?'Esse apelido já existe':'Erro ao criar conta ('+r.s+')'):'Apelido ou senha incorretos');
+ try{let r;for(let i=0;i<DOMS.length;i++){r=await sb(reg?'/auth/v1/signup':'/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:eml(ap,i),password:pw})});if(reg?!badEm(r):r.ok)break}
+  if(!r.ok){const m=emsg(r);return setOn(reg?(r.j&&r.j.error_code=='user_already_exists'||/regist|exist/i.test(m)?'Esse apelido já existe':'Erro ao criar conta ('+r.s+'): '+m):(/invalid login|credentials/i.test(m)?'Apelido ou senha incorretos':'Erro ao entrar ('+r.s+'): '+m))}
   if(!r.j.access_token)return setOn('Desligue "Confirm email" no Supabase (Authentication > Providers > Email).');
   setSess(r.j,ap);
-  if(reg){const p=await sb('/rest/v1/perfis',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({id:SS.uid,apelido:ap,equipe:S.org,pais:S.cc})},SS.t);if(!p.ok){logout();return setOn('Apelido indisponível ou erro ao criar o perfil')}}
+  if(reg){const p=await sb('/rest/v1/perfis',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({id:SS.uid,apelido:ap,equipe:S.org,pais:S.cc})},SS.t);if(!p.ok){const m=emsg(p);logout();return setOn('Não foi possível criar o perfil ('+p.s+'): '+m)}}
   setOn('Conectado!');draw();loadRank();flushQ()}catch(e){setOn('Sem conexão com o servidor')}}
 async function loadRank(){try{const r=await sb('/rest/v1/ranking?select=*');RK=r.ok&&Array.isArray(r.j)?r.j:[]}catch(e){RK=[]}if(tab=='rank'&&!M)draw()}
 const qGet=()=>{try{return JSON.parse(localStorage.getItem('hv_q')||'[]')}catch(e){return[]}};
@@ -537,8 +539,9 @@ async function flushQ(){if(!SS||flushQ.b||Date.now()-lastT<25000)return;const q=
  try{const t=await tok();if(!t)return;lastT=Date.now();const r=await sb('/rest/v1/rpc/enviar_partida',{method:'POST',body:JSON.stringify(q[0])},t);
   if(r.ok||r.s==400||r.s==404){q.shift();localStorage.setItem('hv_q',JSON.stringify(q));lastSend=r.ok?(r.j=='ok'?'enviado ✓':'recusado: '+r.j):'erro '+r.s}}catch(e){}finally{flushQ.b=0}}
 setInterval(flushQ,5000);
+function loginV(){return`<div class="card"><b>Conta online</b><div class="sub" style="margin:6px 0">Entre com apelido e senha para jogar e enviar seus resultados ao ranking mundial.</div><input id="au" placeholder="Apelido" autocapitalize="off" autocomplete="username"><input id="ap" type="password" placeholder="Senha" autocomplete="current-password"><input id="aq" placeholder="Nome da equipe (só ao criar conta)" maxlength="24"><div class="row" style="margin-top:6px"><button onclick="authGo(0)">Entrar</button><button class="g" onclick="authGo(1)">Criar conta</button></div><div id="onm" class="sub" style="margin-top:6px">${esc(onMsg)}</div></div>`}
 function rankV(){let o='';
- if(!SS)o+=`<div class="card"><b>Conta online</b><div class="sub" style="margin:6px 0">Entre com apelido e senha para enviar seus resultados ao ranking mundial.</div><input id="au" placeholder="Apelido" autocapitalize="off" autocomplete="username"><input id="ap" type="password" placeholder="Senha" autocomplete="current-password"><div class="row" style="margin-top:6px"><button onclick="authGo(0)">Entrar</button><button class="g" onclick="authGo(1)">Criar conta</button></div><div id="onm" class="sub" style="margin-top:6px">${esc(onMsg)}</div></div>`;
+ if(!SS)o+=loginV();
  else o+=`<div class="card"><div class="row"><span>Conectado como <b>${esc(SS.ap)}</b></span><button class="g" onclick="logout()">Sair</button></div><div class="sub" style="margin-top:6px">Resultados enviados automaticamente após cada partida e validados pelo servidor. Na fila: ${qGet().length}${lastSend?' · último: '+esc(lastSend):''}</div></div>`;
  return o+`<div class="card"><div class="row"><b>Melhores do mundo</b><button class="g" onclick="loadRank()">Atualizar</button></div><div class="sub">Win rate · mínimo de 10 partidas</div>`+(RK===null?'<div class="sub" style="margin-top:8px">Carregando...</div>':RK.length?RK.map((r,i)=>`<div class="row" style="margin-top:8px"><span>${i+1}. <b>${esc(r.apelido)}</b><br><span class="sub">${fl(r.pais)} ${esc(r.equipe)}</span></span><b class="w">${r.winrate}%</b></div>`).join(''):'<div class="sub" style="margin-top:8px">Ninguém no ranking ainda.</div>')+'</div>'}
 
